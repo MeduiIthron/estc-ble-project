@@ -30,7 +30,9 @@
 #include "nrf_log_default_backends.h"
 #include "nrf_log_backend_usb.h"
 
-#include "estc_service.h"
+#include "src/services/color_service.h"
+#include "src/services/ble_service.h"
+#include "src/services/flash_service.h"
 
 #define DEVICE_NAME                     "ESTC-SVC"                              /**< Name of device. Will be included in the advertising data. */
 #define MANUFACTURER_NAME               "NordicSemiconductor"                   /**< Manufacturer. Will be passed to Device Information Service. */
@@ -60,83 +62,10 @@ static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                        
 static ble_uuid_t m_adv_uuids[] =                                               /**< Universally unique service identifiers. */
 {
     {BLE_UUID_DEVICE_INFORMATION_SERVICE, BLE_UUID_TYPE_BLE},
-    {ESTC_SERVICE_UUID, BLE_UUID_TYPE_BLE}
+    {BLE_SERVICE_UUID, BLE_UUID_TYPE_BLE}
 };
 
-ble_estc_service_t m_estc_service; /**< ESTC example BLE service */
-
 static void advertising_start(void);
-
-// Simple Characteristic Params
-static char* m_simple_char_value = "deadbeef";
-
-// Notificate Characteristic Params
-static uint16_t m_notificate_char_value = 1;
-
-// Indicate Characteristic Params
-static uint16_t m_indicate_char_value = 1;
-
-// Timers
-APP_TIMER_DEF(m_timer_notify_id);
-APP_TIMER_DEF(m_timer_indicate_id);
-
-static void timer_notify_handler(void * p_context)
-{
-    m_notificate_char_value += 2;
-    if (m_notificate_char_value > 1024) 
-        m_notificate_char_value = 0;
-
-    if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
-    {
-        ble_gatts_hvx_params_t hvx_params = {0};
-        ret_code_t err_code;
-        uint16_t len = sizeof(m_notificate_char_value);
-
-        hvx_params.handle = m_estc_service.char_notificate_handle.value_handle;
-        hvx_params.type   = BLE_GATT_HVX_NOTIFICATION;
-        hvx_params.offset = 0;
-        hvx_params.p_len  = &len;
-        hvx_params.p_data = (uint8_t*)&m_notificate_char_value;
-
-        err_code = sd_ble_gatts_hvx(m_conn_handle, &hvx_params);
-        if ((err_code != NRF_SUCCESS) &&
-            (err_code != NRF_ERROR_INVALID_STATE) &&
-            (err_code != NRF_ERROR_RESOURCES) &&
-            (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING))
-        {
-            APP_ERROR_HANDLER(err_code);
-        }
-    }
-}
-
-static void timer_indicate_handler(void * p_context) 
-{
-    m_indicate_char_value += 5;
-    if (m_indicate_char_value > 1024) 
-        m_indicate_char_value = 0;
-
-    if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
-    {
-        ble_gatts_hvx_params_t hvx_params = {0};
-        ret_code_t err_code;
-        uint16_t len = sizeof(m_indicate_char_value);
-
-        hvx_params.handle = m_estc_service.char_indicate_handle.value_handle;
-        hvx_params.type   = BLE_GATT_HVX_INDICATION;
-        hvx_params.offset = 0;
-        hvx_params.p_len  = &len;
-        hvx_params.p_data = (uint8_t*)&m_indicate_char_value;
-
-        err_code = sd_ble_gatts_hvx(m_conn_handle, &hvx_params);
-        if ((err_code != NRF_SUCCESS) &&
-            (err_code != NRF_ERROR_INVALID_STATE) &&
-            (err_code != NRF_ERROR_RESOURCES) &&
-            (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING))
-        {
-            APP_ERROR_HANDLER(err_code);
-        }
-    }
-}
 
 /**@brief Callback function for asserts in the SoftDevice.
  *
@@ -233,34 +162,7 @@ static void services_init(void)
     err_code = nrf_ble_qwr_init(&m_qwr, &qwr_init);
     APP_ERROR_CHECK(err_code);
 
-    err_code = estc_ble_service_init(&m_estc_service);
-    APP_ERROR_CHECK(err_code);
-
-    err_code = estc_ble_add_characteristic(&m_estc_service, 
-                                           ESTC_GATT_CHAR_UUID, 
-                                           "Test characteristic", 
-                                           (uint8_t*)m_simple_char_value, 
-                                           strlen(m_simple_char_value), 
-                                           READ | WRITE, 
-                                           &m_estc_service.char_handle);
-    APP_ERROR_CHECK(err_code);
-    
-    err_code = estc_ble_add_characteristic(&m_estc_service, 
-                                           ESTC_GATT_CHAR_NOTIFICATE_UUID, 
-                                           "Test characteristic with nofitications", 
-                                           (uint8_t*)&m_notificate_char_value, 
-                                           sizeof(m_notificate_char_value), 
-                                           READ | NOTIFY, 
-                                           &m_estc_service.char_notificate_handle);
-    APP_ERROR_CHECK(err_code);
-
-    err_code = estc_ble_add_characteristic(&m_estc_service, 
-                                           ESTC_GATT_CHAR_INDICATE_UUID, 
-                                           "Test characteristic with indication", 
-                                           (uint8_t*)&m_indicate_char_value, 
-                                           sizeof(m_indicate_char_value), 
-                                           READ | INDICATE, 
-                                           &m_estc_service.char_indicate_handle);
+    err_code = ble_service_init(&m_conn_handle);
     APP_ERROR_CHECK(err_code);
 }
 
@@ -323,39 +225,18 @@ static void conn_params_init(void)
  */
 static void application_timers_init(void)
 {
-    ret_code_t err_code;
-
-    err_code = app_timer_create(&m_timer_notify_id, APP_TIMER_MODE_REPEATED, timer_notify_handler);
-    APP_ERROR_CHECK(err_code);
-
-    err_code = app_timer_create(&m_timer_indicate_id, APP_TIMER_MODE_REPEATED, timer_indicate_handler);
-    APP_ERROR_CHECK(err_code);
 }
 
 /**@brief Function for starting timers.
  */
 static void application_timers_start(void)
 {
-    ret_code_t err_code;
-
-    err_code = app_timer_start(m_timer_notify_id, CHAR_NOTIFICATION_UPDATE_TIME, NULL);
-    APP_ERROR_CHECK(err_code);
-
-    err_code = app_timer_start(m_timer_indicate_id, CHAR_INDICATION_UPDATE_TIME, NULL);
-    APP_ERROR_CHECK(err_code);
 }
 
 /**@brief Function for stopping timers.
  */
 static void application_timers_stop(void)
 {
-    ret_code_t err_code;
-
-    err_code = app_timer_stop(m_timer_notify_id);
-    APP_ERROR_CHECK(err_code);
-
-    err_code = app_timer_stop(m_timer_indicate_id);
-    APP_ERROR_CHECK(err_code);
 }
 
 /**@brief Function for putting the chip into sleep mode.
@@ -419,6 +300,10 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 
     switch (p_ble_evt->header.evt_id)
     {
+        case BLE_GATTS_EVT_WRITE:
+            ble_service_write_handler(p_ble_evt);
+            break;
+
         case BLE_GAP_EVT_DISCONNECTED:
             NRF_LOG_INFO("Disconnected (conn_handle: %d)", p_ble_evt->evt.gap_evt.conn_handle);
             // LED indication will be changed when advertising starts.
@@ -500,34 +385,6 @@ static void ble_stack_init(void)
 }
 
 
-/**@brief Function for handling events from the BSP module.
- *
- * @param[in]   event   Event generated when button is pressed.
- */
-static void bsp_event_handler(bsp_event_t event)
-{
-    ret_code_t err_code;
-
-    switch (event)
-    {
-        case BSP_EVENT_SLEEP:
-            sleep_mode_enter();
-            break; // BSP_EVENT_SLEEP
-
-        case BSP_EVENT_DISCONNECT:
-            err_code = sd_ble_gap_disconnect(m_conn_handle,
-                                             BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-            if (err_code != NRF_ERROR_INVALID_STATE)
-            {
-                APP_ERROR_CHECK(err_code);
-            }
-            break; // BSP_EVENT_DISCONNECT
-        default:
-            break;
-    }
-}
-
-
 /**@brief Function for initializing the Advertising functionality.
  */
 static void advertising_init(void)
@@ -565,7 +422,7 @@ static void buttons_leds_init(void)
 {
     ret_code_t err_code;
 
-    err_code = bsp_init(BSP_INIT_LEDS | BSP_INIT_BUTTONS, bsp_event_handler);
+    err_code = bsp_init(BSP_INIT_LEDS | BSP_INIT_BUTTONS, NULL);
     APP_ERROR_CHECK(err_code);
 
     err_code = bsp_btn_ble_init(NULL, NULL);
@@ -623,6 +480,7 @@ int main(void)
 {
     // Initialize.
     log_init();
+    flash_service_init();
     timers_init();
     buttons_leds_init();
     power_management_init();
@@ -633,6 +491,7 @@ int main(void)
     advertising_init();
     conn_params_init();
     application_timers_init();
+    color_service_init();
 
     // Start execution.
     NRF_LOG_INFO("ESTC GATT service example started");

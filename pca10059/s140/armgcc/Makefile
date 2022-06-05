@@ -93,8 +93,22 @@ SRC_FILES += \
   $(SDK_ROOT)/components/ble/common/ble_conn_params.c \
   $(SDK_ROOT)/components/ble/common/ble_advdata.c \
   $(SDK_ROOT)/components/ble/ble_advertising/ble_advertising.c \
-  $(PROJ_DIR)/estc_service.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_pwm.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_systick.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_timer.c \
+  $(SDK_ROOT)/components/libraries/stack_guard/nrf_stack_guard.c \
+  $(SDK_ROOT)/components/libraries/fifo/app_fifo.c \
+  $(SDK_ROOT)/components/libraries/hardfault/nrf52/handler/hardfault_handler_gcc.c \
+  $(SDK_ROOT)/components/libraries/queue/nrf_queue.c \
+  $(SDK_ROOT)/external/utf_converter/utf.c \
   $(PROJ_DIR)/main.c \
+  $(PROJ_DIR)/src/shared/src/color.c \
+  $(PROJ_DIR)/src/devices/src/led.c \
+  $(PROJ_DIR)/src/devices/src/rgb_led.c \
+  $(PROJ_DIR)/src/services/src/color_service.c \
+  $(PROJ_DIR)/src/services/src/ble_service.c \
+  $(PROJ_DIR)/src/services/src/flash_service.c \
+
 
 # Include folders common to all targets
 INC_FOLDERS += \
@@ -228,6 +242,7 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/ble/ble_dtm \
   $(SDK_ROOT)/components/ble/ble_advertising \
   $(SDK_ROOT)/components \
+  $(SDK_ROOT)/components/libraries/bootloader/dfu \
 
 # Libraries common to all targets
 LIB_FILES += \
